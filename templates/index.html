@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Convert DOC/DOCX to PDF</h2>
+    <div class="format-info">
+        <p>✓ Supported formats: .doc, .docx</p>
+        <p>✓ Maximum file size: 10MB</p>
+        <p>✗ Unsupported: PDF, images, and other file types</p>
+    </div>
+    <form action="/convert-to-pdf/" method="post" enctype="multipart/form-data" id="convertForm">
+        <div class="upload-area">
+            <input type="file" name="file" id="file" accept=".doc,.docx" required>
+            <label for="file">Choose a DOC/DOCX file or drag it here</label>
+        </div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressBar"></div>
+            </div>
+            <div class="progress-status" id="progressStatus"></div>
+        </div>
+        <button type="submit" id="submitBtn">Convert to PDF</button>
+    </form>
+    <div id="status" class="hidden"></div>
+</div>
+
+<script>
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+function formatFileSize(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex++;
+    }
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+document.getElementById('file').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const status = document.getElementById('status');
+    
+    if (file) {
+        // Check file format
+        const ext = file.name.toLowerCase().split('.').pop();
+        if (!['doc', 'docx'].includes(ext)) {
+            status.textContent = `Error: ${file.name} is not supported. Please select a DOC or DOCX file.`;
+            status.className = 'error';
+            this.value = ''; // Clear the file input
+            return;
+        }
+        
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
+            status.textContent = `Error: File size (${formatFileSize(file.size)}) exceeds the limit of 10MB`;
+            status.className = 'error';
+            this.value = ''; // Clear the file input
+            return;
+        }
+        
+        status.className = 'hidden';
+    }
+});
+
+document.getElementById('convertForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const status = document.getElementById('status');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressStatus = document.getElementById('progressStatus');
+    
+    const updateProgress = (percent, message) => {
+        progressContainer.classList.add('active');
+        progressBar.style.width = `${percent}%`;
+        progressStatus.textContent = message;
+    };
+    
+    try {
+        submitBtn.disabled = true;
+        status.className = 'hidden';
+        
+        // Start progress
+        updateProgress(10, 'Starting conversion...');
+        
+        const formData = new FormData(e.target);
+        
+        // Upload progress
+        updateProgress(30, 'Uploading file...');
+        const response = await fetch('/convert-to-pdf/', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Conversion failed');
+        }
+        
+        // Converting progress
+        updateProgress(60, 'Converting document to PDF...');
+        const blob = await response.blob();
+        
+        // Finishing up
+        updateProgress(90, 'Preparing download...');
+        
+        // Download handling
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = formData.get('file').name.replace(/\.(doc|docx)$/, '.pdf');
+        
+        updateProgress(100, 'Download starting...');
+        
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        // Wait for download to complete
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        updateProgress(100, 'Download complete!');
+        
+        // Reset after delay
+        setTimeout(() => {
+            progressContainer.classList.remove('active');
+            progressBar.style.width = '0%';
+        }, 1000);
+        
+    } catch (err) {
+        progressContainer.classList.remove('active');
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'error';
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Convert to PDF';
+    }
+};
+</script>
+{% endblock %}
