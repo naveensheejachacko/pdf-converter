@@ -48,3 +48,11 @@ static/
 # System Files
 .DS_Store
 Thumbs.db
+
+
+*.env
+.env.*
+uploads/*
+static/*
+!uploads/.gitkeep
+!static/.gitkeep
