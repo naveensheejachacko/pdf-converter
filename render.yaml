@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pdf-converter
+    env: docker
+    repo: https://github.com/naveensheejachacko/pdf-converter
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /
+    autoDeploy: true

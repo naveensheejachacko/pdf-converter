@@ -142,16 +142,21 @@ async def convert_to_pdf(file: UploadFile = File(...)):
                 status_code=500,
                 detail=f"Conversion failed: Output file not found at {output_path}"
             )
-        # Before returning FileResponse, create a wrapper function
-        async def background_cleanup():
-            await cleanup_files(file_path, output_path)
-
-        return FileResponse(
+        
+        # Schedule cleanup task
+        cleanup_task = asyncio.create_task(cleanup_files(file_path, output_path))
+        
+        # Return the PDF file without background task in FileResponse
+        response = FileResponse(
             path=str(output_path),
             filename=os.path.splitext(file.filename)[0] + '.pdf',
-            media_type="application/pdf",
-            background=background_cleanup
+            media_type="application/pdf"
         )
+        
+        # Add cleanup task to response headers to keep it alive
+        response.background = cleanup_task
+        return response
+        
     except Exception as e:
         print(f"Error during conversion: {str(e)}")  # Debug output
         # Clean up files in case of error
@@ -163,25 +168,25 @@ async def convert_to_pdf(file: UploadFile = File(...)):
             raise
         raise HTTPException(status_code=500, detail=str(e))
 
-# Update cleanup function to be more robust
+# Update cleanup function to handle task properly
 async def cleanup_files(*files):
     """Clean up temporary files with retry"""
-    await asyncio.sleep(5)  # Wait for download to complete
-    for file_path in files:
-        try:
+    try:
+        await asyncio.sleep(5)  # Wait for download to complete
+        for file_path in files:
             if isinstance(file_path, (str, Path)):
                 path = Path(file_path)
-                if path.exists():
-                    path.unlink()
-        except Exception as e:
-            print(f"Error cleaning up {file_path}: {e}")
-            # Retry once after a delay
-            try:
-                await asyncio.sleep(2)
-                if path.exists():
-                    path.unlink()
-            except Exception:
-                pass
+                try:
+                    if path.exists():
+                        path.unlink()
+                except Exception as e:
+                    print(f"First cleanup attempt failed for {path}: {e}")
+                    # Retry once after delay
+                    await asyncio.sleep(2)
+                    if path.exists():
+                        path.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"Cleanup error: {e}")
 
 # Add cleanup task
 async def cleanup_old_files():
